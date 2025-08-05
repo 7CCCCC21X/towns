@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh" class="h-full">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Towns Eligibility 批量查询</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-full bg-slate-50 text-slate-800">
+  <main class="mx-auto max-w-4xl p-6">
+    <h1 class="text-2xl font-semibold text-blue-600 text-center mb-6">
+      Towns Eligibility 批量查询
+    </h1>
+
+    <p class="text-sm text-slate-500 mb-2">
+      在下框粘贴钱包地址（空格 / 换行 / 逗号分隔），点击 <b>查询</b>。
+    </p>
+    <textarea id="addrBox"
+      class="w-full h-40 p-3 rounded-md border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
+      placeholder="0xabc...\n0xdef...\n..."
+    ></textarea>
+
+    <div class="space-x-3 mt-4">
+      <button id="queryBtn"
+        class="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700">
+        查询
+      </button>
+      <button id="copyAddr" class="hidden px-4 py-2 rounded-md bg-slate-600 text-white hover:bg-slate-700">
+        复制地址
+      </button>
+      <button id="copyJson" class="hidden px-4 py-2 rounded-md bg-slate-600 text-white hover:bg-slate-700">
+        复制结果
+      </button>
+    </div>
+
+    <div class="overflow-x-auto mt-6">
+      <table id="table" class="hidden min-w-full text-sm text-left">
+        <thead class="bg-slate-200">
+          <tr><th class="px-3 py-2">#</th><th class="px-3 py-2">地址</th><th class="px-3 py-2">状态</th></tr>
+        </thead>
+        <tbody class="divide-y divide-slate-200"></tbody>
+      </table>
+    </div>
+  </main>
+
+<script>
+const API = '/api/proxy?address=';   // 通过同域 Proxy 规避 CORS
+const $ = sel => document.querySelector(sel);
+const tbody = $('#table tbody');
+
+$('#queryBtn').onclick = async () => {
+  const raw = $('#addrBox').value.trim();
+  const addrs = Array.from(new Set(raw.split(/[\s,]+/).filter(a => /^0x[a-fA-F0-9]{40}$/.test(a))));
+  if (!addrs.length) return alert('请输入有效地址!');
+
+  // reset
+  tbody.innerHTML = '';
+  $('#table').classList.remove('hidden');
+  $('#copyAddr').classList.add('hidden');
+  $('#copyJson').classList.add('hidden');
+
+  const allRes = {};
+  for (let i = 0; i < addrs.length; i++) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="px-3 py-2">${i + 1}</td>
+      <td class="px-3 py-2 break-all">${addrs[i]}</td>
+      <td class="px-3 py-2" id="s${i}"><svg class="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4A8 8 0 104 12z"></path></svg></td>`;
+    tbody.appendChild(tr);
+
+    try {
+      const res = await fetch(API + addrs[i]).then(r => r.json());
+      allRes[addrs[i]] = res;
+      const ok = res?.code === 200;
+      $('#s' + i).innerHTML = ok
+        ? '<span class="text-green-600 font-semibold">✅ Eligible</span>'
+        : '<span class="text-red-600 font-semibold">❌ Not</span>';
+    } catch (e) {
+      $('#s' + i).innerHTML = '<span class="text-red-600">错误</span>';
+    }
+  }
+
+  // 显示复制按钮
+  $('#copyAddr').classList.remove('hidden');
+  $('#copyJson').classList.remove('hidden');
+
+  $('#copyAddr').onclick = () => navigator.clipboard.writeText(addrs.join('\n'));
+  $('#copyJson').onclick = () => navigator.clipboard.writeText(JSON.stringify(allRes, null, 2));
+};
+</script>
+</body>
+</html>
