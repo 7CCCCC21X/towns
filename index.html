@@ -34,17 +34,20 @@
       placeholder="0xabc...\n0xdef...\n..."
     ></textarea>
 
-    <div class="space-x-3 mt-4">
+    <div class="space-y-3 sm:space-x-3 mt-4 flex flex-col sm:flex-row">
       <button id="queryBtn"
         class="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700">
         查询
       </button>
-      <button id="copyAddr" class="hidden px-4 py-2 rounded-md bg-slate-600 text-white hover:bg-slate-700">
-        复制地址
+      <button id="copyEligible" class="hidden px-4 py-2 rounded-md bg-slate-600 text-white hover:bg-slate-700">
+        复制符合资格结果
       </button>
-      <button id="copyJson" class="hidden px-4 py-2 rounded-md bg-slate-600 text-white hover:bg-slate-700">
-        复制结果
-      </button>
+
+      <!-- 脱敏开关 -->
+      <label class="inline-flex items-center text-sm gap-1.5">
+        <input id="maskToggle" type="checkbox" class="h-4 w-4 text-blue-600" checked>
+        脱敏显示地址
+      </label>
     </div>
 
     <!-- 额外按钮 -->
@@ -80,53 +83,64 @@ const API = '/api/proxy?address=';
 const $ = s => document.querySelector(s);
 const tbody = $('#table tbody');
 
-// helper: wei -> token & 千分位
+// helpers
 const fmt = n => (+n / 1e18).toLocaleString('en-US', {maximumFractionDigits:2});
-const mask = a => a.slice(0, 6) + '…';
+const maskAddr = (a, masked) => masked ? a.slice(0,6)+'…' : a;
+
+let latestRows = [];   // 保存行数据以便切换脱敏
+
+$('#maskToggle').onchange = () => {
+  const masked = $('#maskToggle').checked;
+  latestRows.forEach(({cell, addr}) => { cell.textContent = maskAddr(addr, masked);});
+};
 
 $('#queryBtn').onclick = async () => {
   const raw = $('#addrBox').value.trim();
-  const addrs = Array.from(new Set(raw.split(/[\s,]+/).filter(a => /^0x[a-fA-F0-9]{40}$/.test(a))));
+  const addrs = Array.from(new Set(raw.split(/\s+/).filter(a => /^0x[a-fA-F0-9]{40}$/.test(a))));
   if (!addrs.length) return alert('请输入有效地址!');
 
   // reset
   tbody.innerHTML = '';
+  latestRows = [];
   $('#table').classList.remove('hidden');
   $('#stats').classList.add('hidden');
-  $('#copyAddr').classList.add('hidden');
-  $('#copyJson').classList.add('hidden');
+  $('#copyEligible').classList.add('hidden');
 
   let okCnt = 0, sumAmt = 0;
-  const allRes = {};
+  const eligibleLines = [];
 
   for (let i = 0; i < addrs.length; i++) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td class="px-3 py-2">${i + 1}</td>
-      <td class="px-3 py-2">${mask(addrs[i])}</td>
+      <td class="px-3 py-2" id="addr${i}"></td>
       <td class="px-3 py-2" id="s${i}">
         <svg class="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4A8 8 0 104 12z"></path></svg>
       </td>
       <td class="px-3 py-2" id="amt${i}">—</td>
       <td class="px-3 py-2" id="pts${i}">—</td>`;
     tbody.appendChild(tr);
+    const addrCell = $('#addr'+i);
+    addrCell.textContent = maskAddr(addrs[i], $('#maskToggle').checked);
+    latestRows.push({cell: addrCell, addr: addrs[i]});
 
     try {
       const res = await fetch(API + addrs[i]).then(r => r.json());
-      allRes[addrs[i]] = res;
-
       if (res.isEligible) {
         okCnt++;
-        const amt = +res.amount / 1e18;
-        sumAmt += amt;
-        $('#s' + i).innerHTML = '<span class="text-green-600 font-semibold">✅ Eligible</span>';
-        $('#amt' + i).textContent = fmt(res.amount);
-        $('#pts' + i).textContent = fmt(res.points);
+        const amtToken = +res.amount / 1e18;
+        sumAmt += amtToken;
+
+        $('#s'+i).innerHTML = '<span class="text-green-600 font-semibold">✅ Eligible</span>';
+        $('#amt'+i).textContent = fmt(res.amount);
+        $('#pts'+i).textContent = fmt(res.points);
+
+        eligibleLines.push(`${addrs[i]},${amtToken}`);
       } else {
-        $('#s' + i).innerHTML = '<span class="text-red-600 font-semibold">❌ Not</span>';
+        $('#s'+i).innerHTML = '<span class="text-red-600 font-semibold">❌ Not</span>';
       }
     } catch {
-      $('#s' + i).innerHTML = '<span class="text-red-600">错误</span>';
+      $('#s'+i).innerHTML = '<span class="text-red-600">错误</span>';
     }
   }
 
@@ -136,11 +150,11 @@ $('#queryBtn').onclick = async () => {
   $('#sumAmt').textContent = sumAmt.toLocaleString('en-US', {maximumFractionDigits:2});
   $('#stats').classList.remove('hidden');
 
-  // 显示复制按钮
-  $('#copyAddr').classList.remove('hidden');
-  $('#copyJson').classList.remove('hidden');
-  $('#copyAddr').onclick = () => navigator.clipboard.writeText(addrs.join('\n'));
-  $('#copyJson').onclick = () => navigator.clipboard.writeText(JSON.stringify(allRes, null, 2));
+  // 复制按钮
+  if (eligibleLines.length) {
+    $('#copyEligible').classList.remove('hidden');
+    $('#copyEligible').onclick = () => navigator.clipboard.writeText(eligibleLines.join('\n'));
+  }
 };
 </script>
 </body>
